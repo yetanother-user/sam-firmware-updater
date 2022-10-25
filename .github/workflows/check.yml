@@ -2,7 +2,7 @@ name: Check firmware update
 
 on:
   schedule:
-    - cron: '0 */6 * * *'
+    - cron: '0 0,12 * * *'
   workflow_dispatch:
 
 jobs:
@@ -121,7 +121,7 @@ jobs:
        cd out; tar cvf ../firmware-${{ matrix.model }}-${{ steps.check.outputs.latest_version_short }}.tar *; cd ..
        sha512sum firmware-${{ matrix.model }}-${{ steps.check.outputs.latest_version_short }}.tar > firmware-${{ matrix.model }}-${{ steps.check.outputs.latest_version_short }}.tar.sha512sum
 
-    - name: Upload Firmware on Mega
+    - name: Upload Firmware to Mega
       if: steps.check.outputs.need_update == 1
       run: |
        ./megatools mkdir -u "${{ secrets.MEGA_USER }}" -p "${{ secrets.MEGA_PASSWORD }}" "/Root/Samsung"
