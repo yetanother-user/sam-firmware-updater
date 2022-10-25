@@ -1,0 +1,172 @@
+name: Check firmware update
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - model: "SM-P610"
+            region: "DBT"
+            files_bl: "cm.bin.lz4 keystorage.bin.lz4 sboot.bin.lz4 uh.bin.lz4 up_param.bin.lz4"
+            upload_to_mega: "yes"
+
+    steps:
+    - name: Checkout repo
+      uses: actions/checkout@v2
+      with:
+        submodules: true
+
+    - name: Install dependencies
+      run: |
+       sudo apt-get update
+       sudo apt-get install -y lz4 python3-pip build-essential libglib2.0-dev libssl-dev libcurl4-openssl-dev meson ninja-build wget tar curl jq
+       pip3 install git+https://github.com/nlscc/samloader.git
+
+    - name: Compare latest version with current version
+      id: check
+      run: |
+       need_update=0
+       latest=`samloader -m ${{ matrix.model }} -r ${{ matrix.region }} checkupdate`
+       latest_short=`echo $latest | cut -f1 -d '/'`
+       current=`cat current.${{ matrix.model }}` || need_update=1
+       [[ $latest != $current ]] && need_update=1
+       echo ::set-output name=latest_version::$latest
+       echo ::set-output name=latest_version_short::$latest_short
+       echo ::set-output name=need_update::$need_update
+
+    - name: Fetch firmware
+      if: steps.check.outputs.need_update == 1
+      run: |
+       samloader -m ${{ matrix.model }} -r ${{ matrix.region }} download -v ${{ steps.check.outputs.latest_version }} -o ${{ matrix.model }}-${{ steps.check.outputs.latest_version_short }}.zip.enc4 -D
+       mkdir -p out
+       echo ${{ steps.check.outputs.latest_version_short }} >> version.txt
+       sha512sum ${{ matrix.model }}-${{ steps.check.outputs.latest_version_short }}.zip > ${{ matrix.model }}-${{ steps.check.outputs.latest_version_short }}.zip.sha512sum
+
+    - name: Setup megatools
+      if: steps.check.outputs.need_update == 1 && matrix.upload_to_mega
+      run: |
+       wget https://megatools.megous.com/builds/builds/megatools-1.11.0.20220519-linux-x86_64.tar.gz
+       tar xvf megatools-1.11.0.20220519-linux-x86_64.tar.gz
+       mv ./megatools-1.11.0.20220519-linux-x86_64/megatools ./megatools
+
+    - name: Upload ROM to Mega
+      if: steps.check.outputs.need_update == 1 && matrix.upload_to_mega
+      run: |
+       ./megatools mkdir -u "${{ secrets.MEGA_USER }}" -p "${{ secrets.MEGA_PASSWORD }}" "/Root/Samsung"
+       ./megatools mkdir -u "${{ secrets.MEGA_USER }}" -p "${{ secrets.MEGA_PASSWORD }}" "/Root/Samsung/${{ matrix.model }}"
+       ./megatools mkdir -u "${{ secrets.MEGA_USER }}" -p "${{ secrets.MEGA_PASSWORD }}" "/Root/Samsung/${{ matrix.model }}/${{ steps.check.outputs.latest_version_short }}"
+       ./megatools put -u "${{ secrets.MEGA_USER }}" -p "${{ secrets.MEGA_PASSWORD }}" --path=/"Root/Samsung/${{ matrix.model }}/${{ steps.check.outputs.latest_version_short }}" "${{ matrix.model }}-${{ steps.check.outputs.latest_version_short }}.zip" "${{ matrix.model }}-${{ steps.check.outputs.latest_version_short }}.zip.sha512sum"
+
+    - name: Upload ROM to Anonfiles
+      if: steps.check.outputs.need_update == 1
+      run: |
+       echo "${{ matrix.model }}-${{ steps.check.outputs.latest_version_short }}.zip:" > links.txt
+       response="$(curl -s -F "file=@${{ matrix.model }}-${{ steps.check.outputs.latest_version_short }}.zip" https://api.anonfiles.com/upload)"
+       romLink="$(echo "$response" | jq '."data"."file"."url"."full"')"
+       echo "$romLink" >> links.txt
+
+    - name: Upload ROM to Letsupload
+      if: steps.check.outputs.need_update == 1
+      run: |
+       response="$(curl -s -F "file=@${{ matrix.model }}-${{ steps.check.outputs.latest_version_short }}.zip" https://api.letsupload.cc/upload)"
+       romLink="$(echo "$response" | jq '."data"."file"."url"."full"')"
+       echo "$romLink" >> links.txt
+
+    - name: Upload ROM to Filechan
+      if: steps.check.outputs.need_update == 1
+      run: |
+       response="$(curl -s -F "file=@${{ matrix.model }}-${{ steps.check.outputs.latest_version_short }}.zip" https://api.filechan.org/upload)"
+       romLink="$(echo "$response" | jq '."data"."file"."url"."full"')"
+       echo "$romLink" >> links.txt
+       echo "" >> links.txt
+
+    - name: Extract images from AP
+      if: steps.check.outputs.need_update == 1 && matrix.files_ap
+      run: |
+       unzip -p ${{ matrix.model }}-${{ steps.check.outputs.latest_version_short }}.zip "AP*" | tar xvf - -C out ${{ matrix.files_ap }}
+       cd out; for IMAGE in ${{ matrix.files_ap }}; do lz4 -d -m --rm $IMAGE; done; cd ..
+
+    - name: Extract images from BL
+      if: steps.check.outputs.need_update == 1 && matrix.files_bl
+      run: |
+       unzip -p ${{ matrix.model }}-${{ steps.check.outputs.latest_version_short }}.zip "BL*" | tar xvf - -C out ${{ matrix.files_bl }}
+       cd out; for IMAGE in ${{ matrix.files_bl }}; do lz4 -d -m --rm $IMAGE; done; cd ..
+
+    - name: Extract images from CP
+      if: steps.check.outputs.need_update == 1 && matrix.files_cp
+      run: |
+       unzip -p ${{ matrix.model }}-${{ steps.check.outputs.latest_version_short }}.zip "CP*" | tar xvf - -C out ${{ matrix.files_cp }}
+       cd out; for IMAGE in ${{ matrix.files_cp }}; do lz4 -d -m --rm $IMAGE; done; cd ..
+
+    - name: Generate heimdall info
+      if: steps.check.outputs.need_update == 1
+      run: |
+       make -C tools/pithelper
+       unzip -p ${{ matrix.model }}-${{ steps.check.outputs.latest_version_short }}.zip "CSC*" | tar xvf - --wildcards *.pit
+       HEIMDALL_COMMAND="heimdall flash"
+       cd out; for IMAGE in *; do HEIMDALL_COMMAND="$HEIMDALL_COMMAND --$(../tools/pithelper/get-pit-partition ../*.pit $IMAGE) $IMAGE"; done; cd ..
+       echo $HEIMDALL_COMMAND > heimdall.txt
+
+    - name: Archive images for upload
+      if: steps.check.outputs.need_update == 1
+      run: |
+       cd out; tar cvf ../firmware-${{ matrix.model }}-${{ steps.check.outputs.latest_version_short }}.tar *; cd ..
+       sha512sum firmware-${{ matrix.model }}-${{ steps.check.outputs.latest_version_short }}.tar > firmware-${{ matrix.model }}-${{ steps.check.outputs.latest_version_short }}.tar.sha512sum
+
+    - name: Upload Firmware on Mega
+      if: steps.check.outputs.need_update == 1
+      run: |
+       ./megatools mkdir -u "${{ secrets.MEGA_USER }}" -p "${{ secrets.MEGA_PASSWORD }}" "/Root/Samsung"
+       ./megatools mkdir -u "${{ secrets.MEGA_USER }}" -p "${{ secrets.MEGA_PASSWORD }}" "/Root/Samsung/${{ matrix.model }}"
+       ./megatools mkdir -u "${{ secrets.MEGA_USER }}" -p "${{ secrets.MEGA_PASSWORD }}" "/Root/Samsung/${{ matrix.model }}/${{ steps.check.outputs.latest_version_short }}"
+       ./megatools mkdir -u "${{ secrets.MEGA_USER }}" -p "${{ secrets.MEGA_PASSWORD }}" "/Root/Samsung/${{ matrix.model }}/${{ steps.check.outputs.latest_version_short }}/firmware"
+       ./megatools put -u "${{ secrets.MEGA_USER }}" -p "${{ secrets.MEGA_PASSWORD }}" --path="/Root/Samsung/${{ matrix.model }}/${{ steps.check.outputs.latest_version_short }}/firmware" "firmware-${{ matrix.model }}-${{ steps.check.outputs.latest_version_short }}.tar" "firmware-${{ matrix.model }}-${{ steps.check.outputs.latest_version_short }}.tar.sha512sum" "heimdall.txt"
+
+    - name: Update current version
+      if: steps.check.outputs.need_update == 1
+      run: |
+       git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
+       git config --local user.name "github-actions[bot]"
+       git pull origin ${{github.ref}} --ff-only
+       echo ${{ steps.check.outputs.latest_version }} > current.${{ matrix.model }}
+       git add current.${{ matrix.model }}
+       git commit -m "${{ matrix.model }}: ${{ steps.check.outputs.latest_version }}"
+       git tag ${{ steps.check.outputs.latest_shortversion }}
+
+    - name: Push changes to repo
+      if: steps.check.outputs.need_update == 1
+      uses: ad-m/github-push-action@master
+      with:
+        tags: true
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Generate release body
+      if: steps.check.outputs.need_update == 1
+      run: |
+       cat heimdall.txt > body.txt
+       echo "" >> body.txt
+       echo "---" >> body.txt
+       echo "" >> body.txt
+       cat links.txt >> body.txt
+
+    - name: Upload release assets
+      if: steps.check.outputs.need_update == 1
+      uses: softprops/action-gh-release@v1
+      env:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        body_path: body.txt
+        tag_name: ${{ matrix.model }}_${{ steps.check.outputs.latest_version_short }}
+        files: |
+          firmware-${{ matrix.model }}-${{ steps.check.outputs.latest_version_short }}.tar
+          firmware-${{ matrix.model }}-${{ steps.check.outputs.latest_version_short }}.tar.sha512sum
+          heimdall.txt
+          links.txt
