@@ -60,33 +60,43 @@ jobs:
     - name: Upload ROM to Mega
       if: steps.check.outputs.need_update == 1 && matrix.upload_to_mega
       run: |
-       ./megatools mkdir -u "${{ secrets.MEGA_USER }}" -p "${{ secrets.MEGA_PASSWORD }}" "/Root/Samsung"
-       ./megatools mkdir -u "${{ secrets.MEGA_USER }}" -p "${{ secrets.MEGA_PASSWORD }}" "/Root/Samsung/${{ matrix.model }}"
+       if [ "$(./megatools ls -u "${{ secrets.MEGA_USER }}" -p "${{ secrets.MEGA_PASSWORD }}" "/Root/Samsung")" == "" ];then
+        ./megatools mkdir -u "${{ secrets.MEGA_USER }}" -p "${{ secrets.MEGA_PASSWORD }}" "/Root/Samsung"
+       fi
+       if [ "$(./megatools ls -u "${{ secrets.MEGA_USER }}" -p "${{ secrets.MEGA_PASSWORD }}" "/Root/Samsung/${{ matrix.model }}")" == "" ];then
+        ./megatools mkdir -u "${{ secrets.MEGA_USER }}" -p "${{ secrets.MEGA_PASSWORD }}" "/Root/Samsung/${{ matrix.model }}"
+       fi
+       if [ ! "$(./megatools ls -u "${{ secrets.MEGA_USER }}" -p "${{ secrets.MEGA_PASSWORD }}" "/Root/Samsung/${{ matrix.model }}/${{ steps.check.outputs.latest_version_short }}")" == "" ];then
+        ./megatools rm -u "${{ secrets.MEGA_USER }}" -p "${{ secrets.MEGA_PASSWORD }}" "/Root/Samsung/${{ matrix.model }}/${{ steps.check.outputs.latest_version_short }}"
+       fi
        ./megatools mkdir -u "${{ secrets.MEGA_USER }}" -p "${{ secrets.MEGA_PASSWORD }}" "/Root/Samsung/${{ matrix.model }}/${{ steps.check.outputs.latest_version_short }}"
        ./megatools put -u "${{ secrets.MEGA_USER }}" -p "${{ secrets.MEGA_PASSWORD }}" --path=/"Root/Samsung/${{ matrix.model }}/${{ steps.check.outputs.latest_version_short }}" "${{ matrix.model }}-${{ steps.check.outputs.latest_version_short }}.zip" "${{ matrix.model }}-${{ steps.check.outputs.latest_version_short }}.zip.sha512sum"
 
     - name: Upload ROM to Anonfiles
-      if: steps.check.outputs.need_update == 1
+      if: steps.check.outputs.need_update == 1 && matrix.upload_to_mirrors
       run: |
        echo "${{ matrix.model }}-${{ steps.check.outputs.latest_version_short }}.zip:" > links.txt
        response="$(curl -s -F "file=@${{ matrix.model }}-${{ steps.check.outputs.latest_version_short }}.zip" https://api.anonfiles.com/upload)"
        romLink="$(echo "$response" | jq '."data"."file"."url"."full"')"
        echo "$romLink" >> links.txt
+      continue-on-error: true
 
     - name: Upload ROM to Letsupload
-      if: steps.check.outputs.need_update == 1
+      if: steps.check.outputs.need_update == 1 && matrix.upload_to_mirrors
       run: |
        response="$(curl -s -F "file=@${{ matrix.model }}-${{ steps.check.outputs.latest_version_short }}.zip" https://api.letsupload.cc/upload)"
        romLink="$(echo "$response" | jq '."data"."file"."url"."full"')"
        echo "$romLink" >> links.txt
+      continue-on-error: true
 
     - name: Upload ROM to Filechan
-      if: steps.check.outputs.need_update == 1
+      if: steps.check.outputs.need_update == 1 && matrix.upload_to_mirrors
       run: |
        response="$(curl -s -F "file=@${{ matrix.model }}-${{ steps.check.outputs.latest_version_short }}.zip" https://api.filechan.org/upload)"
        romLink="$(echo "$response" | jq '."data"."file"."url"."full"')"
        echo "$romLink" >> links.txt
        echo "" >> links.txt
+      continue-on-error: true
 
     - name: Extract images from AP
       if: steps.check.outputs.need_update == 1 && matrix.files_ap
@@ -124,9 +134,18 @@ jobs:
     - name: Upload Firmware to Mega
       if: steps.check.outputs.need_update == 1
       run: |
-       ./megatools mkdir -u "${{ secrets.MEGA_USER }}" -p "${{ secrets.MEGA_PASSWORD }}" "/Root/Samsung"
-       ./megatools mkdir -u "${{ secrets.MEGA_USER }}" -p "${{ secrets.MEGA_PASSWORD }}" "/Root/Samsung/${{ matrix.model }}"
-       ./megatools mkdir -u "${{ secrets.MEGA_USER }}" -p "${{ secrets.MEGA_PASSWORD }}" "/Root/Samsung/${{ matrix.model }}/${{ steps.check.outputs.latest_version_short }}"
+       if [ "$(./megatools ls -u "${{ secrets.MEGA_USER }}" -p "${{ secrets.MEGA_PASSWORD }}" "/Root/Samsung")" == "" ];then
+        ./megatools mkdir -u "${{ secrets.MEGA_USER }}" -p "${{ secrets.MEGA_PASSWORD }}" "/Root/Samsung"
+       fi
+       if [ "$(./megatools ls -u "${{ secrets.MEGA_USER }}" -p "${{ secrets.MEGA_PASSWORD }}" "/Root/Samsung/${{ matrix.model }}")" == "" ];then
+        ./megatools mkdir -u "${{ secrets.MEGA_USER }}" -p "${{ secrets.MEGA_PASSWORD }}" "/Root/Samsung/${{ matrix.model }}"
+       fi
+       if [ "$(./megatools ls -u "${{ secrets.MEGA_USER }}" -p "${{ secrets.MEGA_PASSWORD }}" "/Root/Samsung/${{ matrix.model }}/${{ steps.check.outputs.latest_version_short }}")" == "" ];then
+        ./megatools mkdir -u "${{ secrets.MEGA_USER }}" -p "${{ secrets.MEGA_PASSWORD }}" "/Root/Samsung/${{ matrix.model }}/${{ steps.check.outputs.latest_version_short }}"
+       fi
+       if [ ! "$(./megatools ls -u "${{ secrets.MEGA_USER }}" -p "${{ secrets.MEGA_PASSWORD }}" "/Root/Samsung/${{ matrix.model }}/${{ steps.check.outputs.latest_version_short }}/firmware")" == "" ];then
+        ./megatools rm -u "${{ secrets.MEGA_USER }}" -p "${{ secrets.MEGA_PASSWORD }}" "/Root/Samsung/${{ matrix.model }}/${{ steps.check.outputs.latest_version_short }}/firmware"
+       fi
        ./megatools mkdir -u "${{ secrets.MEGA_USER }}" -p "${{ secrets.MEGA_PASSWORD }}" "/Root/Samsung/${{ matrix.model }}/${{ steps.check.outputs.latest_version_short }}/firmware"
        ./megatools put -u "${{ secrets.MEGA_USER }}" -p "${{ secrets.MEGA_PASSWORD }}" --path="/Root/Samsung/${{ matrix.model }}/${{ steps.check.outputs.latest_version_short }}/firmware" "firmware-${{ matrix.model }}-${{ steps.check.outputs.latest_version_short }}.tar" "firmware-${{ matrix.model }}-${{ steps.check.outputs.latest_version_short }}.tar.sha512sum" "heimdall.txt"
 
