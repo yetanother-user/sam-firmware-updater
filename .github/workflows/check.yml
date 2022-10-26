@@ -17,6 +17,7 @@ jobs:
             region: "DBT"
             files_bl: "cm.bin.lz4 keystorage.bin.lz4 sboot.bin.lz4 uh.bin.lz4 up_param.bin.lz4"
             upload_to_mega: "yes"
+            upload_to_mirrors: "true"
 
     steps:
     - name: Checkout repo
