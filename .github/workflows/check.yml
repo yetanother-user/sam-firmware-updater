@@ -172,9 +172,11 @@ jobs:
       run: |
        cat heimdall.txt > body.txt
        echo "" >> body.txt
-       echo "---" >> body.txt
-       echo "" >> body.txt
-       cat links.txt >> body.txt
+       if [ ! -f links.txt ];then
+        echo "---" >> body.txt
+        echo "" >> body.txt
+        cat links.txt >> body.txt
+       fi
 
     - name: Upload release assets
       if: steps.check.outputs.need_update == 1
