@@ -172,7 +172,7 @@ jobs:
       run: |
        cat heimdall.txt > body.txt
        echo "" >> body.txt
-       if [ ! -f links.txt ];then
+       if [ -f links.txt ];then
         echo "---" >> body.txt
         echo "" >> body.txt
         cat links.txt >> body.txt
