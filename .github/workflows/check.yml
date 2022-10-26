@@ -76,10 +76,9 @@ jobs:
     - name: Upload ROM to Anonfiles
       if: steps.check.outputs.need_update == 1 && matrix.upload_to_mirrors
       run: |
-       echo "${{ matrix.model }}-${{ steps.check.outputs.latest_version_short }}.zip:" > links.txt
        response="$(curl -s -F "file=@${{ matrix.model }}-${{ steps.check.outputs.latest_version_short }}.zip" https://api.anonfiles.com/upload?token=secrets.ANONFILES_API)"
        romLink="$(echo "$response" | jq '."data"."file"."url"."full"')"
-       echo "$romLink" >> links.txt
+       echo "[ROM] ${{ matrix.model }}-${{ steps.check.outputs.latest_version_short }}.zip: $romLink" > links.txt
       continue-on-error: true
 
     - name: Extract images from AP
@@ -155,9 +154,7 @@ jobs:
       if: steps.check.outputs.need_update == 1
       run: |
        cat heimdall.txt > body.txt
-       echo "" >> body.txt
        if [ -f links.txt ];then
-        echo "---" >> body.txt
         echo "" >> body.txt
         cat links.txt >> body.txt
        fi
